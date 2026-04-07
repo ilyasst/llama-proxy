@@ -1,0 +1,11 @@
+{
+  "LLAMA_PROXY_UPSTREAM_PORT": 8083,
+  "LLAMA_PROXY_PORT": 8082,
+  "LLAMA_PROXY_LOG_DIR": "/Users/peacefeeder/logs/llama",
+  "MODEL_WEIGHTS": {
+    "qwen2.5:32b": 1,
+    "qwen2.5:72b": 2,
+    "llama3.3:latest": 2
+  },
+  "MAX_GPU_WEIGHT": 3
+}
