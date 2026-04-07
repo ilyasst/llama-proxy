@@ -753,7 +753,7 @@ if __name__ == "__main__":
                             warmup = json.dumps({
                                 "model": mid,
                                 "messages": [{"role": "user", "content": "hi"}],
-                                "max_tokens": 1,
+                                "max_tokens": 3,
                             }).encode()
                             wr = urllib.request.Request(
                                 f"http://{UPSTREAM_HOST}:{UPSTREAM_PORT}/v1/chat/completions",
