@@ -265,6 +265,8 @@ class SlotDispatcher:
                 status = m.get("status", {}).get("value", "")
                 if status == "loaded":
                     loaded_models.add(m.get("id"))
+                    for alias in m.get("aliases", []):
+                        loaded_models.add(alias)
                 elif status in ("loading", "unloading"):
                     is_loading = True
 
