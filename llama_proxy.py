@@ -222,7 +222,7 @@ def next_seq():
 
 
 class QueueEntry:
-    __slots__ = ("priority", "seq", "event", "admitted", "model")
+    __slots__ = ("priority", "seq", "event", "admitted", "model", "_conflict_logged")
 
     def __init__(self, priority, model=None):
         self.priority = priority
