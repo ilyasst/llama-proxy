@@ -727,6 +727,50 @@ if __name__ == "__main__":
     _refresh_tailscale_names()
     threading.Thread(target=_ts_refresher, daemon=True).start()
 
+    # Model keep-alive: ensure all preset models stay loaded.
+    # Polls /v1/models periodically; any unloaded model gets a warmup
+    # request to force-load it. Prevents cold starts after crashes/restarts.
+    KEEPALIVE_INTERVAL = int(_cfg("LLAMA_PROXY_KEEPALIVE_INTERVAL", 60, int))
+
+    def _model_keepalive():
+        """Background thread: check for unloaded models and warm them up."""
+        time.sleep(10)  # initial grace period for manager startup
+        while True:
+            try:
+                req = urllib.request.Request(
+                    f"http://{UPSTREAM_HOST}:{UPSTREAM_PORT}/v1/models"
+                )
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.loads(resp.read())
+                for m in data.get("data", []):
+                    mid = m.get("id", "")
+                    status = m.get("status", {}).get("value", "")
+                    preset = m.get("status", {}).get("preset", "")
+                    # Only warm models that have a preset (configured, not discovered)
+                    if status == "unloaded" and preset:
+                        print(f"[keepalive] {mid} is unloaded, warming up...")
+                        try:
+                            warmup = json.dumps({
+                                "model": mid,
+                                "messages": [{"role": "user", "content": "hi"}],
+                                "max_tokens": 1,
+                            }).encode()
+                            wr = urllib.request.Request(
+                                f"http://{UPSTREAM_HOST}:{UPSTREAM_PORT}/v1/chat/completions",
+                                data=warmup,
+                                headers={"Content-Type": "application/json"},
+                            )
+                            urllib.request.urlopen(wr, timeout=180)
+                            print(f"[keepalive] {mid} loaded successfully")
+                        except Exception as e:
+                            print(f"[keepalive] {mid} warmup failed: {e}")
+            except Exception:
+                pass
+            time.sleep(KEEPALIVE_INTERVAL)
+
+    threading.Thread(target=_model_keepalive, daemon=True).start()
+    print(f"[llama-proxy] Model keepalive: every {KEEPALIVE_INTERVAL}s")
+
     server = ThreadedHTTPServer((LISTEN_HOST, LISTEN_PORT), ProxyHandler)
     try:
         server.serve_forever()
