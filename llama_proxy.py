@@ -448,7 +448,13 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
         if model_name:
             free, busy = dispatcher.get_slot_availability(model_name)
         else:
-            free, busy, _, _ = dispatcher.poll_slots_and_model()
+            # Aggregate slots across all loaded models
+            _, _, loaded_models, _ = dispatcher.poll_slots_and_model()
+            free, busy = 0, 0
+            for m in loaded_models:
+                mf, mb = dispatcher.get_slot_availability(m)
+                free += mf
+                busy += mb
         slots = []
         for i in range(free + busy):
             slots.append({"id": i, "is_processing": i >= free})
