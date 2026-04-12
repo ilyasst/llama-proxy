@@ -533,12 +533,22 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
             free, busy, loaded_models, is_loading = dispatcher.poll_slots_and_model()
 
-            # Fast path: slot available and model loaded
+            # When upstream has no /slots endpoint (e.g. Ollama), fall back
+            # to internal active-request tracking for the fast path.
+            _ollama_compat = False
+            if free == 0 and busy == 0 and not loaded_models:
+                _ollama_compat = True
+                with dispatcher._lock:
+                    if dispatcher._active_requests == 0:
+                        free = 1
+
+            # Fast path: slot available and model loaded (or internal tracking says free)
+            # In Ollama-compat mode, skip the is_probe gate since we track slots internally.
             if (
                 free > 0
                 and not is_loading
-                and target_model in loaded_models
-                and not is_probe
+                and (target_model in loaded_models or not loaded_models)
+                and (not is_probe or _ollama_compat)
             ):
                 dispatcher.mark_request_started()
                 try:
