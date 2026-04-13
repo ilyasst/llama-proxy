@@ -249,8 +249,16 @@ class SlotDispatcher:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
-    def poll_slots_and_model(self):
-        """Returns (free_slots, busy_slots, loaded_models, is_loading)"""
+    def poll_slots_and_model(self, target_model=None):
+        """Returns (free_slots, busy_slots, loaded_models, is_loading)
+
+        If target_model is given and loaded, slot counts are for that model
+        specifically. Otherwise picks an arbitrary loaded model (legacy
+        behavior for the dispatcher thread, which doesn't know the target).
+        Querying the wrong model's slots can cause the fast path to fire
+        on a free slot of model A when the target B is actually busy,
+        blocking the request for up to the full read timeout.
+        """
         try:
             req = urllib.request.Request(
                 f"http://{UPSTREAM_HOST}:{UPSTREAM_PORT}/v1/models"
@@ -271,7 +279,11 @@ class SlotDispatcher:
                     is_loading = True
 
             free, busy = 0, 0
-            query_model = next(iter(loaded_models), None)
+            query_model = (
+                target_model
+                if target_model and target_model in loaded_models
+                else next(iter(loaded_models), None)
+            )
             if query_model:
                 try:
                     req = urllib.request.Request(
@@ -531,7 +543,7 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
             t_arrival = time.monotonic()
             queue_wait = 0.0
 
-            free, busy, loaded_models, is_loading = dispatcher.poll_slots_and_model()
+            free, busy, loaded_models, is_loading = dispatcher.poll_slots_and_model(target_model)
 
             # When upstream has no /slots endpoint (e.g. Ollama), fall back
             # to internal active-request tracking for the fast path.
@@ -765,7 +777,9 @@ if __name__ == "__main__":
                     status = m.get("status", {}).get("value", "")
                     preset = m.get("status", {}).get("preset", "")
                     # Only warm models that have a preset (configured, not discovered)
-                    if status == "unloaded" and preset:
+                    # and are in MODEL_WEIGHTS — prevents warming phantom models
+                    # which can cause eviction loops on multi-model hosts.
+                    if status == "unloaded" and preset and mid in MODEL_WEIGHTS:
                         print(f"[keepalive] {mid} is unloaded, warming up...")
                         try:
                             warmup = json.dumps({
