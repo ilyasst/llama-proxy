@@ -556,9 +556,15 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
 
             # Fast path: slot available and model loaded (or internal tracking says free)
             # In Ollama-compat mode, skip the is_probe gate since we track slots internally.
+            #
+            # NOTE on `is_loading`: previously gated as `not is_loading` (global —
+            # any model loading/unloading on this host). That blocked unrelated
+            # traffic during LRU swaps when --models-max < total preset models.
+            # `loaded_models` already filters status='loaded', so a target that
+            # is mid-load wouldn't be in the set anyway — the global guard is
+            # redundant and harmful. Removed.
             if (
                 free > 0
-                and not is_loading
                 and (target_model in loaded_models or not loaded_models)
                 and (not is_probe or _ollama_compat)
             ):
